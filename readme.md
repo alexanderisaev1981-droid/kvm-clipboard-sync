@@ -36,7 +36,7 @@ Requirements:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/kvm-clipboard-sync.git
+git clone https://github.com/alexanderisaev1981-droid/kvm-clipboard-sync.git
 
 # 2. Go to directory
 cd kvm-clipboard-sync
