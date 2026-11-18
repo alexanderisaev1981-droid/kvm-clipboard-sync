@@ -17,6 +17,22 @@ When using a hardware KVM switch to toggle between two computers (e.g., Work Lap
 
 ## 💡 The Solution
 **KVM Clipboard Sync** turns any standard USB flash drive plugged into your KVM hub into a private, high-speed clipboard relay:
+
+```text
+  [ Computer A ]                          [ Computer B ]
+   (Work Laptop)                          (Personal PC)
+         │                                      │
+   [ Ctrl + C ]                                 │
+         │                                      │
+         ▼                                      ▼
+    writes text                            reads text
+         │                                      │
+         └────────►  [ KVM SWITCH ]  ◄──────────┘
+                            │
+               [ Shared USB Flash Drive ]
+                 (clipboard_sync.txt)
+```
+
 1. When you copy text on Computer A, it instantly writes to a sync file on the shared USB flash drive.
 2. When you toggle your KVM switch to Computer B, the tool detects the USB drive, reads the sync file, and updates Computer B's clipboard automatically.
 
@@ -27,8 +43,9 @@ When using a hardware KVM switch to toggle between two computers (e.g., Work Lap
 ## ✨ Features
 *   **Zero Dependencies:** Portable single `.exe` binary. No installers, runtimes, or background services required.
 *   **System Tray Integration:** Runs quietly in the Windows notification area with negligible memory (~3-5 MB) and 0% CPU at idle.
-*   **Smart Filtered Drive Menu:** The tray menu dynamically scans and displays only mounted, valid drive letters on your machine.
-*   **Reliable Auto-Save:** Remembers your selected drive in `settings.txt` adjacent to the executable — seamlessly compatible with Windows Startup (`shell:startup`) and Task Scheduler.
+*   **One-Click Windows Auto-Start:** Toggle `[x] Run on Windows Startup` directly from the tray menu (stored in user registry `HKCU\...\Run`).
+*   **Smart Filtered Drive Menu:** The tray menu displays mounted, valid drive letters on your machine, with a manual `Rescan Drives` option on demand.
+*   **Reliable Auto-Save:** Remembers your selected drive in `settings.txt` adjacent to the executable — seamlessly compatible with Windows Startup and Task Scheduler.
 *   **Flash Storage Protection:** Built-in 2 MB safety cap prevents USB controller wear and system lockups when copying massive database dumps or log files.
 *   **Single-Instance Lock:** Built-in loopback socket lock prevents duplicate processes.
 *   **Bi-directional Smart Sync:** Sync triggers only when clipboard or file content genuinely changes, avoiding unnecessary disk writes.
@@ -41,9 +58,7 @@ When using a hardware KVM switch to toggle between two computers (e.g., Work Lap
 2. **Plug in** your shared USB flash drive into the KVM switch USB hub.
 3. **Run** `sync.exe` on **both** computers.
 4. **Right-click** the tray icon and select your shared USB drive letter (e.g., `E:` or `Z:`).
-5. *(Optional)* Add `sync.exe` to your Windows Startup folder:
-   - Press <kbd>Win</kbd> + <kbd>R</kbd>, type `shell:startup`, and press Enter.
-   - Place a shortcut to `sync.exe` into that folder.
+5. **Enable Auto-Start:** check `Запускать при старте Windows` in the tray menu so it runs automatically every time.
 
 ---
 

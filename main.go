@@ -11,11 +11,13 @@ import (
 
 	"github.com/atotto/clipboard"
 	"github.com/getlantern/systray"
+	"golang.org/x/sys/windows/registry"
 )
 
 // --- ГЛОБАЛЬНЫЕ НАСТРОЙКИ ---
 
 const (
+	appName        = "KVMClipboardSync"
 	lockPort       = "127.0.0.1:54321"
 	syncFileName   = "clipboard_sync.txt"
 	configFileName = "settings.txt"
@@ -27,6 +29,7 @@ var (
 	currentDrive = "Z:" // Значение по умолчанию
 	driveMutex   sync.RWMutex
 	appDir       = "."
+	exePath      = ""
 )
 
 //go:embed icon.ico
@@ -38,8 +41,9 @@ func getConfigFilePath() string {
 }
 
 func initAppDir() {
-	if exePath, err := os.Executable(); err == nil {
-		appDir = filepath.Dir(exePath)
+	if p, err := os.Executable(); err == nil {
+		exePath = p
+		appDir = filepath.Dir(p)
 	}
 }
 
@@ -48,6 +52,35 @@ func isDriveAvailable(driveLetter string) bool {
 	root := driveLetter + `\`
 	_, err := os.Stat(root)
 	return err == nil
+}
+
+// --- УПРАВЛЕНИЕ АВТОЗАПУСКОМ ЧЕРЕЗ РЕЕСТР WINDOWS ---
+
+func isAutoStartEnabled() bool {
+	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Run`, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	defer k.Close()
+
+	val, _, err := k.GetStringValue(appName)
+	return err == nil && val != ""
+}
+
+func setAutoStart(enable bool) error {
+	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Run`, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+
+	if enable {
+		if exePath == "" {
+			initAppDir()
+		}
+		return k.SetStringValue(appName, `"`+exePath+`"`)
+	}
+	return k.DeleteValue(appName)
 }
 
 func main() {
@@ -61,7 +94,6 @@ func main() {
 	defer listener.Close()
 
 	// 2. ЗАГРУЗКА НАСТРОЕК
-	// Читаем файл settings.txt рядом с исполняемым файлом
 	if data, err := os.ReadFile(getConfigFilePath()); err == nil {
 		savedLetter := strings.TrimSpace(string(data))
 		if len(savedLetter) == 2 && savedLetter[1] == ':' {
@@ -86,7 +118,6 @@ func onReady() {
 	selectCh := make(chan string, 16)
 
 	// Создаем элементы меню для всех букв от C: до Z:
-	// Скрываем те, которых сейчас нет в системе
 	for i := 'C'; i <= 'Z'; i++ {
 		letter := string(i) + ":"
 		item := mDrives.AddSubMenuItem(letter, "Использовать диск "+letter)
@@ -123,7 +154,7 @@ func onReady() {
 		}
 	}
 
-	// Пункт меню для ручного пересканирования подключенных дисков
+	// Пункт меню для ручного пересканирования дисков
 	mRefreshDrives := systray.AddMenuItem("Обновить список дисков", "Пересканировать подключенные диски и флешки")
 	go func() {
 		for range mRefreshDrives.ClickedCh {
@@ -150,6 +181,26 @@ func onReady() {
 			}
 
 			mDrives.SetTooltip("Текущий диск: " + chosenLetter)
+		}
+	}()
+
+	systray.AddSeparator()
+
+	// --- ПУНКТ АВТОЗАПУСКА С WINDOWS ---
+	autoStartEnabled := isAutoStartEnabled()
+	mAutoStart := systray.AddMenuItemCheckbox("Запускать при старте Windows", "Включить или отключить автозапуск программы", autoStartEnabled)
+
+	go func() {
+		for range mAutoStart.ClickedCh {
+			if mAutoStart.Checked() {
+				if err := setAutoStart(false); err == nil {
+					mAutoStart.Uncheck()
+				}
+			} else {
+				if err := setAutoStart(true); err == nil {
+					mAutoStart.Check()
+				}
+			}
 		}
 	}()
 
