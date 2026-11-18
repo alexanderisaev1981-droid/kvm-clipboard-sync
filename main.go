@@ -2,7 +2,6 @@ package main
 
 import (
 	"embed"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -16,20 +15,44 @@ import (
 
 // --- ГЛОБАЛЬНЫЕ НАСТРОЙКИ ---
 
-const lockPort = "127.0.0.1:54321"
-const syncFileName = "clipboard_sync.txt"
-const configFileName = "settings.txt" // Имя файла, где храним букву
+const (
+	lockPort       = "127.0.0.1:54321"
+	syncFileName   = "clipboard_sync.txt"
+	configFileName = "settings.txt"
+	maxSyncBytes   = 2 * 1024 * 1024 // 2 МБ максимальный размер для синхронизации
+)
 
 // Переменные состояния
 var (
 	currentDrive = "Z:" // Значение по умолчанию
 	driveMutex   sync.RWMutex
+	appDir       = "."
 )
 
 //go:embed icon.ico
 var iconFs embed.FS
 
+// getConfigFilePath возвращает надежный путь к файлу конфигурации рядом с exe
+func getConfigFilePath() string {
+	return filepath.Join(appDir, configFileName)
+}
+
+func initAppDir() {
+	if exePath, err := os.Executable(); err == nil {
+		appDir = filepath.Dir(exePath)
+	}
+}
+
+// isDriveAvailable проверяет, существует ли корень диска в системе
+func isDriveAvailable(driveLetter string) bool {
+	root := driveLetter + `\`
+	_, err := os.Stat(root)
+	return err == nil
+}
+
 func main() {
+	initAppDir()
+
 	// 1. ЗАЩИТА ОТ ПОВТОРНОГО ЗАПУСКА
 	listener, err := net.Listen("tcp", lockPort)
 	if err != nil {
@@ -38,14 +61,11 @@ func main() {
 	defer listener.Close()
 
 	// 2. ЗАГРУЗКА НАСТРОЕК
-	// Пытаемся прочитать файл settings.txt рядом с exe
-	// Если файла нет или ошибка — останется Z:
-	if data, err := ioutil.ReadFile(configFileName); err == nil {
-		// TrimSpace убирает лишние пробелы и переносы строк, если они там есть
+	// Читаем файл settings.txt рядом с исполняемым файлом
+	if data, err := os.ReadFile(getConfigFilePath()); err == nil {
 		savedLetter := strings.TrimSpace(string(data))
-		// Простая проверка, что там похоже на букву диска (длина 2, например "F:")
-		if len(savedLetter) == 2 {
-			currentDrive = savedLetter
+		if len(savedLetter) == 2 && savedLetter[1] == ':' {
+			currentDrive = strings.ToUpper(savedLetter)
 		}
 	}
 
@@ -54,7 +74,6 @@ func main() {
 }
 
 func onReady() {
-	// Иконка и описание
 	iconData, _ := iconFs.ReadFile("icon.ico")
 	systray.SetIcon(iconData)
 	systray.SetTitle("KVM Clipboard Sync")
@@ -64,48 +83,50 @@ func onReady() {
 	mDrives := systray.AddMenuItem("Выбрать диск", "Текущий диск: "+currentDrive)
 
 	driveItems := make(map[string]*systray.MenuItem)
+	selectCh := make(chan string, 16)
 
-	// Генерируем пункты от C: до Z:
+	// Добавляем доступные диски (или текущий выбранный, даже если он временно отключен)
 	for i := 'C'; i <= 'Z'; i++ {
 		letter := string(i) + ":"
-		item := mDrives.AddSubMenuItem(letter, "Использовать диск "+letter)
-		driveItems[letter] = item
+		// Показываем диск, если он существует или был сохранен в настройках
+		if isDriveAvailable(letter) || letter == currentDrive {
+			item := mDrives.AddSubMenuItem(letter, "Использовать диск "+letter)
+			driveItems[letter] = item
 
-		// Ставим галочку, если этот диск был загружен из настроек
-		if letter == currentDrive {
-			item.Check()
-		}
-
-		localLetter := letter
-
-		// Обработчик клика
-		go func() {
-			for {
-				<-item.ClickedCh // Ждем клика
-
-				// 1. Обновляем в памяти
-				driveMutex.Lock()
-				currentDrive = localLetter
-				driveMutex.Unlock()
-
-				// 2. СОХРАНЯЕМ В ФАЙЛ
-				// Игнорируем ошибки записи, так как это не критично
-				_ = ioutil.WriteFile(configFileName, []byte(localLetter), 0644)
-
-				// 3. Обновляем галочки в меню
-				for l, menuItem := range driveItems {
-					if l == localLetter {
-						menuItem.Check()
-					} else {
-						menuItem.Uncheck()
-					}
-				}
-
-				// Обновляем подсказку главного пункта
-				mDrives.SetTooltip("Текущий диск: " + localLetter)
+			if letter == currentDrive {
+				item.Check()
 			}
-		}()
+
+			localLetter := letter
+			go func() {
+				for range item.ClickedCh {
+					selectCh <- localLetter
+				}
+			}()
+		}
 	}
+
+	// Единый диспетчер смены диска
+	go func() {
+		for chosenLetter := range selectCh {
+			driveMutex.Lock()
+			currentDrive = chosenLetter
+			driveMutex.Unlock()
+
+			// Сохраняем в файл настроек рядом с бинарником
+			_ = os.WriteFile(getConfigFilePath(), []byte(chosenLetter), 0644)
+
+			for l, menuItem := range driveItems {
+				if l == chosenLetter {
+					menuItem.Check()
+				} else {
+					menuItem.Uncheck()
+				}
+			}
+
+			mDrives.SetTooltip("Текущий диск: " + chosenLetter)
+		}
+	}()
 
 	systray.AddSeparator()
 
@@ -125,7 +146,7 @@ func onExit() {
 func getFullSyncPath() string {
 	driveMutex.RLock()
 	defer driveMutex.RUnlock()
-	return filepath.Join(currentDrive+"\\", syncFileName)
+	return filepath.Join(currentDrive+`\`, syncFileName)
 }
 
 func runSyncLoop() {
@@ -137,12 +158,10 @@ func runSyncLoop() {
 
 		currentPath := getFullSyncPath()
 
-		// 1. Проверка доступности
-		if _, err := os.Stat(currentPath); os.IsNotExist(err) {
-			dir := filepath.Dir(currentPath)
-			if _, err := os.Stat(dir); os.IsNotExist(err) {
-				continue
-			}
+		// 1. Проверка доступности диска/папки
+		dir := filepath.Dir(currentPath)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			continue
 		}
 
 		// 2. Читаем буфер
@@ -151,11 +170,15 @@ func runSyncLoop() {
 			continue
 		}
 
-		// 3. Читаем файл
-		fileBytes, err := ioutil.ReadFile(currentPath)
-		currFile := string(fileBytes)
-		if err != nil {
-			currFile = ""
+		// 3. Читаем файл, если он существует
+		var currFile string
+		if info, err := os.Stat(currentPath); err == nil {
+			// Защита от слишком больших файлов на флешке
+			if info.Size() <= maxSyncBytes {
+				if fileBytes, err := os.ReadFile(currentPath); err == nil {
+					currFile = string(fileBytes)
+				}
+			}
 		}
 
 		// А: Флешка -> Буфер
@@ -168,9 +191,9 @@ func runSyncLoop() {
 
 		// Б: Буфер -> Флешка
 		if currClip != lastClipboardContent && currClip != "" {
-			if currClip != currFile {
-				err := ioutil.WriteFile(currentPath, []byte(currClip), 0644)
-				if err == nil {
+			// Проверка размера текста в буфере обмена (до 2 МБ)
+			if len([]byte(currClip)) <= maxSyncBytes && currClip != currFile {
+				if err := os.WriteFile(currentPath, []byte(currClip), 0644); err == nil {
 					lastFileContent = currClip
 				}
 			}
