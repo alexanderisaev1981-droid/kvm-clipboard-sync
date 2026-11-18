@@ -85,26 +85,61 @@ func onReady() {
 	driveItems := make(map[string]*systray.MenuItem)
 	selectCh := make(chan string, 16)
 
-	// Добавляем доступные диски (или текущий выбранный, даже если он временно отключен)
+	// Создаем элементы меню для всех букв от C: до Z:
+	// Скрываем те, которых сейчас нет в системе
 	for i := 'C'; i <= 'Z'; i++ {
 		letter := string(i) + ":"
-		// Показываем диск, если он существует или был сохранен в настройках
-		if isDriveAvailable(letter) || letter == currentDrive {
-			item := mDrives.AddSubMenuItem(letter, "Использовать диск "+letter)
-			driveItems[letter] = item
+		item := mDrives.AddSubMenuItem(letter, "Использовать диск "+letter)
+		driveItems[letter] = item
 
-			if letter == currentDrive {
-				item.Check()
+		if letter == currentDrive {
+			item.Check()
+		}
+
+		if !isDriveAvailable(letter) && letter != currentDrive {
+			item.Hide()
+		}
+
+		localLetter := letter
+		go func() {
+			for range item.ClickedCh {
+				selectCh <- localLetter
 			}
+		}()
+	}
 
-			localLetter := letter
-			go func() {
-				for range item.ClickedCh {
-					selectCh <- localLetter
-				}
-			}()
+	// Функция обновления видимости дисков в меню
+	updateDriveMenuVisibility := func() {
+		driveMutex.RLock()
+		active := currentDrive
+		driveMutex.RUnlock()
+
+		for letter, item := range driveItems {
+			if isDriveAvailable(letter) || letter == active {
+				item.Show()
+			} else {
+				item.Hide()
+			}
 		}
 	}
+
+	// Пункт меню для ручного принудительного сканирования
+	mRefreshDrives := systray.AddMenuItem("Обновить список дисков", "Пересканировать подключенные диски и флешки")
+	go func() {
+		for range mRefreshDrives.ClickedCh {
+			updateDriveMenuVisibility()
+		}
+	}()
+
+	// Фоновый таймер: автоматически сканирует диски каждые 3 секунды
+	// чтобы при вставке флешки она сразу появлялась в меню
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			updateDriveMenuVisibility()
+		}
+	}()
 
 	// Единый диспетчер смены диска
 	go func() {
