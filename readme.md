@@ -1,48 +1,68 @@
 # KVM Clipboard Sync (Go)
 
-A lightweight, system-tray utility written in Go (Golang) to synchronize the clipboard between two computers sharing a USB drive (typically via a KVM switch).
+[![Go Version](https://img.shields.io/badge/Go-1.18%2B-00ADD8?logo=go)](https://golang.org)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows)](https://microsoft.com/windows)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
+
+> **Instant, zero-network clipboard sharing between computers sharing a USB drive via hardware KVM switch.**
+
+A lightweight Windows system-tray utility written in Go that automatically synchronizes the clipboard across PCs using a shared USB flash drive. Perfect for home-office setups, dual-PC streaming, and switching between Work and Personal laptops without internet, cloud, or LAN dependency.
+
+---
 
 ## 🚀 The Problem
-If you use a hardware KVM switch to toggle between two computers (e.g., Work Laptop and Home PC), you lose the ability to copy-paste text between them. KVMs switch USB devices physically, but they don't have internal memory for clipboard sharing.
+When using a hardware KVM switch to toggle between two computers (e.g., Work Laptop and Personal PC), you lose the ability to copy-paste text between them:
+* Hardware KVM switches redirect USB peripherals physically, but possess no internal memory to transfer clipboard data.
+* Network-based clipboard tools (Barrier, Synergy, KDE Connect) often fail in corporate setups due to strict VPN policies, isolated subnets, or company firewall restrictions.
 
 ## 💡 The Solution
-This tool runs in the background on both computers.
-1. When you copy text, it saves it to a file on your shared USB flash drive.
-2. When you switch the KVM to the other computer, the tool detects the USB drive, reads the file, and puts the text into the clipboard.
+**KVM Clipboard Sync** turns any standard USB flash drive plugged into your KVM hub into a private, high-speed clipboard relay:
+1. When you copy text on Computer A, it instantly writes to a sync file on the shared USB flash drive.
+2. When you toggle your KVM switch to Computer B, the tool detects the USB drive, reads the sync file, and updates Computer B's clipboard automatically.
 
-**It works automatically and instantly.**
+**No LAN, no Wi-Fi, no cloud services, and zero configuration required.**
+
+---
 
 ## ✨ Features
-*   **Zero Dependencies:** Single `.exe` file. No installation required.
-*   **Tray Icon:** Runs silently in the Windows system tray.
-*   **Filtered Drive Selection:** The tray menu dynamically discovers and displays only active/mounted drives in your system.
-*   **Reliable Auto-Save:** Automatically persists your selected drive letter in `settings.txt` located right next to the executable, ensuring proper operation with Windows Startup, Task Scheduler, or shortcuts.
-*   **Optimized Resource Usage:** Consumes minimal RAM (~3-5MB), negligible CPU, and uses a centralized channel-based event dispatcher.
-*   **Flash Drive & Memory Protection:** Implements a safety limit (2 MB) for synchronized text to prevent high I/O lag and wear on USB flash storage from accidental huge copies (e.g. database dumps).
-*   **Single-Instance Lock:** Built-in loopback socket lock prevents accidental duplicate processes from running simultaneously.
-*   **Smart Sync:** Bi-directional sync triggers only when the clipboard or file content actually changes.
+*   **Zero Dependencies:** Portable single `.exe` binary. No installers, runtimes, or background services required.
+*   **System Tray Integration:** Runs quietly in the Windows notification area with negligible memory (~3-5 MB) and 0% CPU at idle.
+*   **Smart Filtered Drive Menu:** The tray menu dynamically scans and displays only mounted, valid drive letters on your machine.
+*   **Reliable Auto-Save:** Remembers your selected drive in `settings.txt` adjacent to the executable — seamlessly compatible with Windows Startup (`shell:startup`) and Task Scheduler.
+*   **Flash Storage Protection:** Built-in 2 MB safety cap prevents USB controller wear and system lockups when copying massive database dumps or log files.
+*   **Single-Instance Lock:** Built-in loopback socket lock prevents duplicate processes.
+*   **Bi-directional Smart Sync:** Sync triggers only when clipboard or file content genuinely changes, avoiding unnecessary disk writes.
 
-## 🛠️ Installation & Usage
+---
 
-1. **Download** the latest release (or build it yourself).
-2. **Plug in** your shared USB drive (via KVM).
+## 🛠️ Quick Start
+
+1. **Download** the latest `sync.exe` from [Releases](https://github.com/alexanderisaev1981-droid/kvm-clipboard-sync/releases) (or build from source).
+2. **Plug in** your shared USB flash drive into the KVM switch USB hub.
 3. **Run** `sync.exe` on **both** computers.
-4. **Right-click** the tray icon and select your USB drive letter (e.g., `Z:`).
-5. Add `sync.exe` to your Windows Startup folder (`shell:startup`) to run it automatically on boot.
+4. **Right-click** the tray icon and select your shared USB drive letter (e.g., `E:` or `Z:`).
+5. *(Optional)* Add `sync.exe` to your Windows Startup folder:
+   - Press <kbd>Win</kbd> + <kbd>R</kbd>, type `shell:startup`, and press Enter.
+   - Place a shortcut to `sync.exe` into that folder.
+
+---
 
 ## 🏗️ Building from Source
 
 Requirements:
 *   Go 1.18+
-*   GCC (MinGW-w64 or TDM-GCC) for Windows system tray support (`cgo`).
+*   GCC (MinGW-w64 or TDM-GCC) for Windows system tray CGO bindings.
 
 ```bash
-# 1. Clone the repository
+# Clone the repository
 git clone https://github.com/alexanderisaev1981-droid/kvm-clipboard-sync.git
-
-# 2. Go to directory
 cd kvm-clipboard-sync
 
-# 3. Build (Hide console window)
+# Build optimized binary (hides console window, strips debug symbols)
 go build -ldflags "-H=windowsgui -s -w" -o sync.exe main.go
 ```
+
+---
+
+## 📄 License
+Distributed under the MIT License. See `LICENSE.txt` for details.
