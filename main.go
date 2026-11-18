@@ -123,20 +123,10 @@ func onReady() {
 		}
 	}
 
-	// Пункт меню для ручного принудительного сканирования
+	// Пункт меню для ручного пересканирования подключенных дисков
 	mRefreshDrives := systray.AddMenuItem("Обновить список дисков", "Пересканировать подключенные диски и флешки")
 	go func() {
 		for range mRefreshDrives.ClickedCh {
-			updateDriveMenuVisibility()
-		}
-	}()
-
-	// Фоновый таймер: автоматически сканирует диски каждые 3 секунды
-	// чтобы при вставке флешки она сразу появлялась в меню
-	go func() {
-		ticker := time.NewTicker(3 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
 			updateDriveMenuVisibility()
 		}
 	}()
